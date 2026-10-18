@@ -1,0 +1,9 @@
+.env
+.env.local
+**/.venv/
+**/__pycache__/
+*.py[cod]
+*.db
+web/node_modules/
+web/.next/
+web/tsconfig.tsbuildinfo

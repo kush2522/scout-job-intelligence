@@ -1,0 +1,65 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: scout
+      POSTGRES_USER: scout
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - scout_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scout -d scout"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  migrate:
+    build: ./backend
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://scout:${POSTGRES_PASSWORD}@db:5432/scout
+      APP_ENV: production
+      AUTO_CREATE_SCHEMA: "false"
+    depends_on:
+      db: { condition: service_healthy }
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://scout:${POSTGRES_PASSWORD}@db:5432/scout
+      APP_ENV: production
+      AUTO_CREATE_SCHEMA: "false"
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    depends_on:
+      api: { condition: service_healthy }
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    command: ["python", "worker.py"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://scout:${POSTGRES_PASSWORD}@db:5432/scout
+      APP_ENV: production
+      AUTO_CREATE_SCHEMA: "false"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+volumes:
+  scout_pgdata:
