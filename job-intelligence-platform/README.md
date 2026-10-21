@@ -48,6 +48,12 @@ The pilot currently supports plain-text replies, one locality, a maximum monthly
 
 `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` must be configured in the backend environment for Adzuna and are never stored in the source JSON. Create distinct Adzuna sources for role/location query segments, with a modest `max_pages` value and within the API account limits. The Adzuna search API requires `app_id` and `app_key` query parameters and returns job-ad listings; Scout loads credentials from environment variables and redacts them from stored ingestion errors. Review Adzuna API terms and permitted downstream use before productizing. `company_name` and `website_url` can also be passed when creating a source. Provider identifiers are public board slugs/identifiers, not secret API credentials. Source creation defaults to disabled until a human confirms applicable source terms; the admin screen has an explicit policy-review checkbox. The generic career-page crawler also checks robots.txt and follows a bounded number of same-origin links.
 
+## Job-board coverage model
+
+Scout searches its own normalized index of employer career pages and supported/licensed feeds. The candidate search page also creates direct searches on LinkedIn, Naukri and Foundit using the candidate's current keywords and location; those results stay on the portals and are not copied into Scout. This gives candidates a single place to start without representing portal search results as Scout-verified listings.
+
+Do not add automated LinkedIn collection without written authorization: its current User Agreement and crawling terms prohibit scraping absent express permission. Naukri's public XML-feed material describes employer job-posting distribution, not a general job-seeker listing API. No authorized general listing API for Foundit was identified during this implementation. If a commercial data or partner agreement becomes available for any of these boards, implement it as a separately licensed connector with attribution, retention and deletion rules. Meanwhile, prioritize direct employer career pages and the public Greenhouse, Lever, Ashby and SmartRecruiters feeds listed above. Board access policies and API availability can change; review the current agreement before enabling a new connector.
+
 ## Run locally with Docker
 
 1. Copy `.env.example` to `.env` and replace both placeholder secrets with strong values:

@@ -7,6 +7,10 @@ from .config import settings
 def connector_for_url(url: str, company_name: str | None = None):
     p = urlparse(url); host = (p.hostname or "").lower(); parts = [x for x in p.path.split("/") if x]
     base = {"company_name": company_name} if company_name else {}
+    if host == "careers.wipro.com":
+        return {"kind":"career_page", "name":company_name or "Wipro",
+                "base_url":"https://careers.wipro.com/viewalljobs/",
+                "config_json":{**base,"company_name":company_name or "Wipro","max_pages":settings.max_career_pages}}
     if host in {"boards.greenhouse.io", "job-boards.greenhouse.io"} and parts:
         return {"kind":"greenhouse", "name":company_name or parts[0], "base_url":url, "config_json":{**base,"board_token":parts[0]}}
     if host in {"jobs.lever.co", "jobs.eu.lever.co"} and parts:

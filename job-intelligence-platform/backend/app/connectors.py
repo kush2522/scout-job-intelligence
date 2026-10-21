@@ -1,4 +1,4 @@
-import asyncio, ipaddress, json, socket
+import asyncio, ipaddress, json, re, socket
 from datetime import timezone
 from urllib.parse import urlparse, urlunparse, urljoin
 from urllib.robotparser import RobotFileParser
@@ -194,6 +194,11 @@ async def fetch_source(source):
                 raise ValueError(f"SmartRecruiters result exceeded the {max_pages}-page safety limit; snapshot was not complete")
         elif source.kind in {"jsonld", "career_page"}:
             start_url = cfg.get("url") or source.base_url
+            start_parts = urlparse(start_url)
+            if start_parts.hostname == "careers.wipro.com" and re.fullmatch(r"/go/[^/]+/\d+/?", start_parts.path, re.IGNORECASE):
+                # /go/<category>/<id>/ is a brand/category content page. Wipro's
+                # actual vacancy inventory and pagination live at /viewalljobs/.
+                start_url = f"{start_parts.scheme}://{start_parts.netloc}/viewalljobs/"
             assert_public_http_url(start_url)
             max_pages = 1 if source.kind == "jsonld" else max(1, min(int(cfg.get("max_pages", settings.max_career_pages)), settings.max_career_pages))
             queue = [start_url]; visited = set(); emitted = set()
@@ -216,9 +221,41 @@ async def fetch_source(source):
                             emitted.add(item["external_id"]); yield item
                 if source.kind == "career_page":
                     domain = urlparse(start_url).netloc.lower()
+                    is_wipro = domain == "careers.wipro.com"
+                    # Wipro's /go/<category>/<id>/ paths are editorial category
+                    # pages; vacancies are listed on /viewalljobs/ and its
+                    # numeric 50-result pages (/viewalljobs/50/, /100/, ...).
+                    # Keep the generic crawler bounded while following those pages.
+                    if is_wipro and re.fullmatch(r"/viewalljobs(?:/\d+)?/?", urlparse(url).path, re.IGNORECASE):
+                        pagination = []
+                        for link in soup.select("a[href]"):
+                            href = urljoin(url, link.get("href", "")); parsed = urlparse(href)
+                            if parsed.netloc.lower() != domain or not re.fullmatch(r"/viewalljobs/\d+/?", parsed.path, re.IGNORECASE):
+                                continue
+                            if canonicalize(href) not in visited and href not in queue:
+                                pagination.append(href)
+                        # Process result pages before individual detail pages and
+                        # category/marketing navigation links.
+                        queue[0:0] = pagination
                     for link in soup.select("a[href]"):
                         href = urljoin(url, link.get("href", "")); parsed = urlparse(href)
                         label = (link.get_text(" ", strip=True) + " " + href).lower()
+                        if is_wipro and parsed.netloc.lower() == domain:
+                            match = re.fullmatch(r"/job/([^/]+)/([0-9]+)-([A-Za-z]{2}_[A-Za-z]{2})/?", parsed.path)
+                            if match:
+                                req_id = match.group(2)
+                                title = link.get_text(" ", strip=True) or re.sub(r"[-_]+", " ", match.group(1)).strip()
+                                if req_id not in emitted:
+                                    emitted.add(req_id)
+                                    yield {"external_id": req_id, "title": title[:500],
+                                        "company_name": cfg.get("company_name") or source.name,
+                                        "location": None, "employment_type": None,
+                                        "description": "Open the official Wipro listing for location, requirements and full role details.",
+                                        "apply_url": href, "remote": False, "posted_at": None}
+                                continue
+                            # These are category story pages, not job-result pages.
+                            if re.fullmatch(r"/go/[^/]+/\d+/?", parsed.path, re.IGNORECASE):
+                                continue
                         if parsed.scheme in {"http", "https"} and parsed.netloc.lower() == domain and any(word in label for word in ("career", "vacanc", "opening", "/jobs", "job/", "position")):
                             if canonicalize(href) not in visited and href not in queue: queue.append(href)
                 await asyncio.sleep(max(source.min_interval_seconds, settings.min_source_interval_seconds))
