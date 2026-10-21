@@ -7,12 +7,13 @@ from sqlalchemy import select, or_, func, desc
 from sqlalchemy.orm import Session
 from .config import settings
 from .db import Base, engine, get_db
-from .models import Job, JobListing, Source, Company, IngestionRun
-from .schemas import SourceCreate, SourceOut, JobOut, CompanyOut, SourceRunOut
+from .models import Job, JobListing, Source, Company, IngestionRun, RentalListing
+from .schemas import SourceCreate, SourceOut, JobOut, CompanyOut, SourceRunOut, RentalListingCreate, RentalListingOut
 from .ingest import ingest_source, ingest_all
 from .connectors import assert_public_http_url
 from .security import require_admin
 from .discovery import discover_careers, connector_for_url
+from .whatsapp import router as whatsapp_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,6 +25,43 @@ app = FastAPI(title="Scout Job Intelligence API", version="0.2.0", lifespan=life
               description="Multi-source job ingestion and hiring intelligence API")
 app.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in settings.cors_origins.split(",") if x.strip()],
                    allow_credentials=False, allow_methods=["GET", "POST", "PATCH", "OPTIONS"], allow_headers=["Content-Type", "X-Admin-Token"])
+app.include_router(whatsapp_router)
+
+def _is_recently_seen(job: Job, days: int = 30) -> bool:
+    last_seen = job.last_seen_at
+    if last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=timezone.utc)
+    return last_seen >= datetime.now(timezone.utc) - timedelta(days=days)
+
+@app.post("/api/admin/rentals", response_model=RentalListingOut, dependencies=[Depends(require_admin)])
+def create_rental(payload: RentalListingCreate, db: Session = Depends(get_db)):
+    item = RentalListing(
+        title=payload.title, locality=payload.locality, rent=payload.rent, bedrooms=payload.bedrooms,
+        furnishing=payload.furnishing, property_type=payload.property_type, description=payload.description,
+        listing_url=str(payload.listing_url) if payload.listing_url else None,
+        contact_phone=payload.contact_phone, contact_share_allowed=payload.contact_share_allowed,
+        source_name=payload.source_name, verified_at=datetime.now(timezone.utc) if payload.verified else None,
+    )
+    db.add(item); db.commit(); db.refresh(item); return item
+
+@app.get("/api/admin/rentals", response_model=list[RentalListingOut], dependencies=[Depends(require_admin)])
+def list_rentals(available: bool | None = None, limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db)):
+    stmt = select(RentalListing).order_by(desc(RentalListing.updated_at)).limit(limit)
+    if available is not None: stmt = stmt.where(RentalListing.available.is_(available))
+    return db.scalars(stmt).all()
+
+@app.patch("/api/admin/rentals/{listing_id}", dependencies=[Depends(require_admin)])
+def update_rental(listing_id: int, payload: dict, db: Session = Depends(get_db)):
+    item = db.get(RentalListing, listing_id)
+    if not item: raise HTTPException(404, "Rental listing not found")
+    allowed = {"available", "verified", "rent", "locality", "title", "bedrooms", "furnishing", "property_type", "description", "listing_url", "contact_phone", "contact_share_allowed"}
+    unknown = set(payload) - allowed
+    if unknown: raise HTTPException(422, f"Unsupported fields: {', '.join(sorted(unknown))}")
+    for key, value in payload.items():
+        if key == "verified": item.verified_at = datetime.now(timezone.utc) if value else None
+        elif key == "listing_url": item.listing_url = str(value) if value else None
+        elif hasattr(item, key): setattr(item, key, value)
+    db.commit(); db.refresh(item); return {"id": item.id, "available": item.available, "verified_at": item.verified_at}
 
 @app.get("/api/health")
 def health(db: Session = Depends(get_db)):
@@ -36,8 +74,13 @@ def health(db: Session = Depends(get_db)):
 @app.get("/api/jobs", response_model=list[JobOut])
 def jobs(q: str | None = None, location: str | None = None, company: str | None = None,
          employment_type: str | None = None, remote: bool | None = None, posted_within_days: int | None = Query(None, ge=1, le=365),
+         fresh_within_days: int = Query(30, ge=1, le=365),
          limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
-    stmt = select(Job).where(Job.active.is_(True))
+    source_counts = (select(JobListing.job_id.label("job_id"), func.count(func.distinct(JobListing.source_id)).label("source_count"))
+                     .where(JobListing.active.is_(True)).group_by(JobListing.job_id).subquery())
+    stmt = (select(Job, func.coalesce(source_counts.c.source_count, 0).label("source_count"))
+            .outerjoin(source_counts, source_counts.c.job_id == Job.id)
+            .where(Job.active.is_(True), Job.last_seen_at >= datetime.now(timezone.utc) - timedelta(days=fresh_within_days)))
     if q:
         like = f"%{q[:150]}%"
         stmt = stmt.where(or_(Job.title.ilike(like), Job.company_name.ilike(like), Job.description.ilike(like)))
@@ -46,13 +89,12 @@ def jobs(q: str | None = None, location: str | None = None, company: str | None 
     if employment_type: stmt = stmt.where(Job.employment_type.ilike(f"%{employment_type[:100]}%"))
     if remote is not None: stmt = stmt.where(Job.remote.is_(remote))
     if posted_within_days: stmt = stmt.where(Job.first_seen_at >= datetime.now(timezone.utc) - timedelta(days=posted_within_days))
-    rows = db.scalars(stmt.order_by(desc(Job.first_seen_at)).offset(offset).limit(limit)).all()
+    rows = db.execute(stmt.order_by(desc(Job.first_seen_at), Job.id).offset(offset).limit(limit)).all()
     result = []
-    for job in rows:
-        source_count = db.scalar(select(func.count(func.distinct(JobListing.source_id))).where(JobListing.job_id == job.id, JobListing.active.is_(True))) or 1
+    for job, source_count in rows:
         result.append(JobOut(id=job.id, title=job.title, company_name=job.company_name, location=job.location,
             employment_type=job.employment_type, description=job.description, salary_min=float(job.salary_min) if job.salary_min is not None else None, salary_max=float(job.salary_max) if job.salary_max is not None else None, salary_currency=job.salary_currency, skills=job.skills_json or [], apply_url=job.apply_url, canonical_url=job.canonical_url,
-            remote=job.remote, posted_at=job.posted_at, first_seen_at=job.first_seen_at, active=job.active, source_count=source_count))
+            remote=job.remote, posted_at=job.posted_at, first_seen_at=job.first_seen_at, last_seen_at=job.last_seen_at, active=job.active, source_count=source_count))
     return result
 
 @app.get("/api/jobs/{job_id}/sources")
@@ -65,22 +107,24 @@ def job_sources(job_id: int, db: Session = Depends(get_db)):
              "last_seen_at": listing.last_seen_at} for listing, source in rows]
 
 @app.get("/api/jobs/{job_id}", response_model=JobOut)
-def job_detail(job_id: int, db: Session = Depends(get_db)):
+def job_detail(job_id: int, fresh_within_days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
-    if not job: raise HTTPException(404, "Job not found")
-    source_count = db.scalar(select(func.count(func.distinct(JobListing.source_id))).where(JobListing.job_id == job.id, JobListing.active.is_(True))) or 1
+    if not job or not job.active or not _is_recently_seen(job, fresh_within_days): raise HTTPException(404, "Active job not found")
+    source_count = db.scalar(select(func.count(func.distinct(JobListing.source_id))).where(JobListing.job_id == job.id, JobListing.active.is_(True))) or 0
     return JobOut(id=job.id, title=job.title, company_name=job.company_name, location=job.location, employment_type=job.employment_type,
         description=job.description, salary_min=float(job.salary_min) if job.salary_min is not None else None, salary_max=float(job.salary_max) if job.salary_max is not None else None, salary_currency=job.salary_currency, skills=job.skills_json or [], apply_url=job.apply_url, canonical_url=job.canonical_url, remote=job.remote, posted_at=job.posted_at,
-        first_seen_at=job.first_seen_at, active=job.active, source_count=source_count)
+        first_seen_at=job.first_seen_at, last_seen_at=job.last_seen_at, active=job.active, source_count=source_count)
 
 @app.get("/api/companies", response_model=list[CompanyOut])
 def companies(q: str | None = None, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
-    stmt = select(Company)
+    active_counts = (select(Job.company_id.label("company_id"), func.count(Job.id).label("active_job_count"))
+                     .where(Job.active.is_(True), Job.last_seen_at >= datetime.now(timezone.utc) - timedelta(days=30))
+                     .group_by(Job.company_id).subquery())
+    stmt = select(Company, func.coalesce(active_counts.c.active_job_count, 0)).outerjoin(active_counts, active_counts.c.company_id == Company.id)
     if q: stmt = stmt.where(Company.name.ilike(f"%{q[:150]}%"))
-    items = db.scalars(stmt.order_by(Company.name).offset(offset).limit(limit)).all()
+    items = db.execute(stmt.order_by(Company.name).offset(offset).limit(limit)).all()
     out = []
-    for c in items:
-        count = db.scalar(select(func.count(Job.id)).where(Job.company_id == c.id, Job.active.is_(True))) or 0
+    for c, count in items:
         out.append(CompanyOut(id=c.id, name=c.name, website_url=c.website_url, careers_url=c.careers_url, industry=c.industry, country_code=c.country_code, active_job_count=count))
     return out
 
@@ -92,37 +136,38 @@ def sources(db: Session = Depends(get_db)):
 @app.get("/api/analytics/overview")
 def analytics_overview(db: Session = Depends(get_db)):
     since = datetime.now(timezone.utc) - timedelta(days=7)
-    return {"active_jobs": db.scalar(select(func.count(Job.id)).where(Job.active.is_(True))) or 0,
+    fresh = datetime.now(timezone.utc) - timedelta(days=30)
+    return {"active_jobs": db.scalar(select(func.count(Job.id)).where(Job.active.is_(True), Job.last_seen_at >= fresh)) or 0,
             "companies": db.scalar(select(func.count(Company.id))) or 0,
             "enabled_sources": db.scalar(select(func.count(Source.id)).where(Source.enabled.is_(True))) or 0,
-            "new_jobs_7d": db.scalar(select(func.count(Job.id)).where(Job.active.is_(True), Job.first_seen_at >= since)) or 0,
+            "new_jobs_7d": db.scalar(select(func.count(Job.id)).where(Job.active.is_(True), Job.last_seen_at >= fresh, Job.first_seen_at >= since)) or 0,
             "source_count": len(db.scalars(select(Source.id)).all())}
 
 @app.get("/api/analytics/top-companies")
 def top_companies(limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
     active_count = func.count(Job.id).label("active_jobs")
     rows = db.execute(select(Company.name, active_count).join(Job, Job.company_id == Company.id)
-        .where(Job.active.is_(True)).group_by(Company.id, Company.name).order_by(active_count.desc()).limit(limit)).all()
+        .where(Job.active.is_(True), Job.last_seen_at >= datetime.now(timezone.utc) - timedelta(days=30)).group_by(Company.id, Company.name).order_by(active_count.desc()).limit(limit)).all()
     return [{"company": name, "active_jobs": count} for name, count in rows]
 
 @app.get("/api/analytics/locations")
 def top_locations(limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
     active_count = func.count(Job.id).label("active_jobs")
-    rows = db.execute(select(Job.location, active_count).where(Job.active.is_(True), Job.location.is_not(None))
+    rows = db.execute(select(Job.location, active_count).where(Job.active.is_(True), Job.last_seen_at >= datetime.now(timezone.utc) - timedelta(days=30), Job.location.is_not(None))
         .group_by(Job.location).order_by(active_count.desc()).limit(limit)).all()
     return [{"location": location, "active_jobs": count} for location, count in rows]
 
 @app.get("/api/analytics/roles")
 def top_roles(limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
     role_count = func.count(Job.id).label("active_jobs")
-    rows = db.execute(select(Job.normalized_title, role_count).where(Job.active.is_(True))
+    rows = db.execute(select(Job.normalized_title, role_count).where(Job.active.is_(True), Job.last_seen_at >= datetime.now(timezone.utc) - timedelta(days=30))
         .group_by(Job.normalized_title).order_by(role_count.desc()).limit(limit)).all()
     return [{"role": role.title() if role else "Unspecified", "active_jobs": count} for role, count in rows]
 
 @app.get("/api/analytics/skills")
 def top_skills(limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
     from collections import Counter
-    rows = db.scalars(select(Job.skills_json).where(Job.active.is_(True))).all()
+    rows = db.scalars(select(Job.skills_json).where(Job.active.is_(True), Job.last_seen_at >= datetime.now(timezone.utc) - timedelta(days=30))).all()
     counts = Counter(skill for skills in rows for skill in (skills or []))
     return [{"skill": skill, "active_jobs": count} for skill, count in counts.most_common(limit)]
 

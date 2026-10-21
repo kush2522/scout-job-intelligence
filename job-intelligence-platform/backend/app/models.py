@@ -95,3 +95,33 @@ class IngestionRun(Base):
     jobs_updated: Mapped[int] = mapped_column(Integer, default=0)
     listings_deactivated: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+class RentalListing(Base):
+    """Rental inventory submitted by owners/authorized partners; never portal-scraped."""
+    __tablename__ = "rental_listings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(250))
+    locality: Mapped[str] = mapped_column(String(150), index=True)
+    rent: Mapped[int] = mapped_column(Integer, index=True)
+    bedrooms: Mapped[int] = mapped_column(Integer, index=True)
+    furnishing: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    property_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    listing_url: Mapped[str | None] = mapped_column(String(1500), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    contact_share_allowed: Mapped[bool] = mapped_column(Boolean, default=False)
+    source_name: Mapped[str] = mapped_column(String(100), default="owner")
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    available: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+    __table_args__ = (Index("ix_rentals_available_locality_rent", "available", "locality", "rent"),)
+
+class WhatsAppUser(Base):
+    __tablename__ = "whatsapp_users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    phone: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    state: Mapped[str] = mapped_column(String(30), default="new")
+    preferences_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    last_inbound_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    opted_out: Mapped[bool] = mapped_column(Boolean, default=False)

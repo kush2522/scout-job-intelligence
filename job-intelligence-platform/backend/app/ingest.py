@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from .models import Job, JobListing, Source, Company, IngestionRun
-from .connectors import fetch_source, canonicalize, normalize
+from .connectors import fetch_source, canonicalize, normalize, parse_date
 from .config import settings
 
 _SOURCE_LOCKS: dict[int, asyncio.Lock] = {}
@@ -28,7 +28,19 @@ def extract_skills(title: str | None, description: str | None) -> list[str]:
     text = f"{title or ''} {description or ''}".casefold()
     return sorted(name for name, pattern in _SKILL_PATTERNS.items() if re.search(pattern, text, re.IGNORECASE))
 def _dedupe_key(item):
-    raw = "|".join([normalize(item.get("title")), normalize(item.get("company_name")), normalize(item.get("location")), normalize(item.get("employment_type"))])
+    posted = item.get("posted_at")
+    if posted and not isinstance(posted, datetime):
+        posted = parse_date(posted)
+    if posted and posted.tzinfo is not None:
+        posted = posted.astimezone(timezone.utc)
+    posted_day = posted.date().isoformat() if posted else ""
+    description = normalize(item.get("description"))
+    # Title/company/location alone collapse separate requisitions at large employers.
+    # Requiring the same posting day and normalized description is a conservative
+    # cross-source match; source/external IDs remain the stable within-feed identity.
+    raw = "|".join([normalize(item.get("title")), normalize(item.get("company_name")),
+                    normalize(item.get("location")), normalize(item.get("employment_type")),
+                    posted_day, description])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 def _company_key(name): return normalize(name)
 _SOURCE_PRIORITY = {"career_page": 1, "jsonld": 1, "greenhouse": 2, "lever": 2, "ashby": 2, "smartrecruiters": 2, "adzuna": 5}
@@ -89,6 +101,9 @@ async def ingest_source(db: Session, source: Source, trigger="manual"):
         db.add(run); db.commit(); db.refresh(run)
         source.last_run_at = datetime.now(timezone.utc); source.last_error = None; db.commit()
         seen_external_ids = set(); seen_count = created = updated = deactivated = 0
+        previous_active_count = db.scalar(select(func.count(JobListing.id)).where(
+            JobListing.source_id == source.id, JobListing.active.is_(True))) or 0
+        snapshot_complete = True
         try:
             async for item in fetch_source(source):
                 seen_count += 1
@@ -126,6 +141,7 @@ async def ingest_source(db: Session, source: Source, trigger="manual"):
                 current_primary = db.get(Source, job.primary_source_id) if job.primary_source_id else None
                 current_priority = _SOURCE_PRIORITY.get(current_primary.kind, 3) if current_primary else 999
                 new_priority = _SOURCE_PRIORITY.get(source.kind, 3)
+                authoritative = not current_primary or source.id == job.primary_source_id or new_priority <= current_priority
                 if not job.primary_source_id or new_priority < current_priority:
                     job.primary_source_id = source.id
                     job.apply_url = item.get("apply_url") or job.apply_url
@@ -133,19 +149,15 @@ async def ingest_source(db: Session, source: Source, trigger="manual"):
                 elif job.primary_source_id == source.id and item.get("apply_url"):
                     job.apply_url = item["apply_url"]
                     job.canonical_url = canonicalize(item["apply_url"])
-                # Refresh canonical values only when supplied data is not empty; preserve known details if connector lacks them.
-                job.title = item.get("title") or job.title
+                # A lower-priority feed can fill gaps but cannot overwrite better data.
+                for field in ("title", "company_name", "location", "employment_type", "salary_min", "salary_max", "salary_currency", "description", "posted_at", "remote"):
+                    incoming = item.get(field)
+                    if incoming is None or incoming == "":
+                        continue
+                    if authoritative or getattr(job, field) in (None, ""):
+                        setattr(job, field, incoming)
                 job.normalized_title = normalize(job.title)
-                job.company_name = item.get("company_name") or job.company_name
-                job.location = item.get("location") or job.location
-                job.employment_type = item.get("employment_type") or job.employment_type
-                job.salary_min = item.get("salary_min") if item.get("salary_min") is not None else job.salary_min
-                job.salary_max = item.get("salary_max") if item.get("salary_max") is not None else job.salary_max
-                job.salary_currency = item.get("salary_currency") or job.salary_currency
-                job.description = item.get("description") or job.description
-                job.skills_json = sorted(set(job.skills_json or []) | set(extract_skills(job.title, job.description)))
-                job.posted_at = item.get("posted_at") or job.posted_at
-                job.remote = bool(item.get("remote")) or job.remote
+                job.skills_json = extract_skills(job.title, job.description)
                 job.active = True; job.last_seen_at = datetime.now(timezone.utc)
                 if not job.company_id:
                     company = _upsert_company(db, job.company_name, source); job.company_id = company.id
@@ -166,21 +178,31 @@ async def ingest_source(db: Session, source: Source, trigger="manual"):
                         canonical_url=canonicalize(item["apply_url"]), active=True))
                 # Commit in small batches to cap memory/transaction size for large feeds.
                 if seen_count % 100 == 0: db.commit()
-            # Successful full snapshot: postings absent from this feed are no longer active at this source.
-            existing_listings = db.scalars(select(JobListing).where(JobListing.source_id == source.id, JobListing.active.is_(True))).all()
-            for listing in existing_listings:
-                if listing.external_id not in seen_external_ids:
-                    listing.active = False; deactivated += 1
-                    db.flush()
-                    active_elsewhere = db.scalar(select(func.count(JobListing.id)).where(JobListing.job_id == listing.job_id, JobListing.active.is_(True), JobListing.id != listing.id)) or 0
-                    if active_elsewhere == 0:
-                        job = db.get(Job, listing.job_id)
-                        if job: job.active = False
-            run.status = "success"; run.jobs_seen = seen_count; run.jobs_created = created; run.jobs_updated = updated
+            # Avoid closing a feed's entire inventory on empty/truncated snapshots.
+            minimum_ratio = float((source.config_json or {}).get("min_snapshot_ratio", 0.5))
+            if not 0 <= minimum_ratio <= 1:
+                minimum_ratio = 0.5
+            if previous_active_count and (seen_count == 0 or seen_count < previous_active_count * minimum_ratio):
+                snapshot_complete = False
+            if snapshot_complete:
+                existing_listings = db.scalars(select(JobListing).where(JobListing.source_id == source.id, JobListing.active.is_(True))).all()
+                for listing in existing_listings:
+                    if listing.external_id not in seen_external_ids:
+                        listing.active = False; deactivated += 1
+                        db.flush()
+                        active_elsewhere = db.scalar(select(func.count(JobListing.id)).where(JobListing.job_id == listing.job_id, JobListing.active.is_(True), JobListing.id != listing.id)) or 0
+                        if active_elsewhere == 0:
+                            job = db.get(Job, listing.job_id)
+                            if job: job.active = False
+            run.status = "success" if snapshot_complete else "incomplete"
+            run.jobs_seen = seen_count; run.jobs_created = created; run.jobs_updated = updated
             run.listings_deactivated = deactivated; run.finished_at = datetime.now(timezone.utc)
-            source.last_status = "success"; source.last_error = None
+            source.last_status = run.status
+            source.last_error = None if snapshot_complete else "Inventory snapshot was empty or unexpectedly smaller; prior listings were kept active"
+            run.error = source.last_error
             db.commit()
-            return {"run_id": run.id, "source_id": source.id, "status": run.status, "jobs_seen": seen_count, "created": created, "updated": updated, "listings_deactivated": deactivated}
+            return {"run_id": run.id, "source_id": source.id, "status": run.status, "jobs_seen": seen_count, "created": created, "updated": updated, "listings_deactivated": deactivated,
+                    "warning": source.last_error}
         except Exception as exc:
             db.rollback()
             # Failed/blocked sources do not cause listings to be deactivated.

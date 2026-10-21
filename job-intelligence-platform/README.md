@@ -4,6 +4,36 @@ A local-first starter for a startup serving **job seekers** and **hiring-intelli
 
 > Coverage is connector-based, not universal. Some job boards disallow automation or require commercial API agreements. Do not bypass logins, CAPTCHAs, access controls, or terms.
 
+## WhatsApp-first Bengaluru rental search
+
+This backend also includes a WhatsApp-only renter experience. A renter messages **Hi** to your WhatsApp Business number, then answers three short questions: locality, maximum monthly rent, and bedrooms. The bot returns up to three matches. There is no renter web app in this flow.
+
+Listings must come from owners, authorized partners, or a licensed feed. This project does not scrape 99acres, Housing.com, NoBroker, or other portals. A match is shown only when it is marked available and owner-confirmed within the past 14 days. Contact links are shared only when `contact_share_allowed` is true. This freshness check improves trust but cannot independently prove property details; encourage users to visit and verify before paying.
+
+### Configure WhatsApp
+
+1. Create/configure a Meta WhatsApp Business Cloud API app and a public HTTPS webhook URL: `https://YOUR_HOST/api/whatsapp/webhook`.
+2. Set `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, and `WHATSAPP_APP_SECRET` in `.env`. Keep these server-side. The webhook verifies Meta's challenge and validates `X-Hub-Signature-256` on each event.
+3. Subscribe the Meta app to the WhatsApp `messages` webhook field. The API is intentionally not usable until all WhatsApp credentials are configured.
+4. Apply the database migration with `docker compose run --rm migrate` (or your normal deployment migration step), then start/restart the API.
+5. Set the Graph API version in `WHATSAPP_GRAPH_VERSION` to a version supported by your Meta app before deployment.
+
+### Add and maintain rental listings
+
+Operators can add owner-authorized inventory using the admin API. Set `verified: true` only after confirming with the owner that the property is still available. Refresh that confirmation at least every 14 days. Example:
+
+```bash
+curl -X POST http://localhost:8000/api/admin/rentals \
+  -H 'Content-Type: application/json' -H "X-Admin-Token: $ADMIN_API_TOKEN" \
+  -d '{"title":"Sunny 2 BHK near metro","locality":"Indiranagar","rent":42000,"bedrooms":2,"furnishing":"semi-furnished","contact_phone":"919876543210","contact_share_allowed":true,"source_name":"owner","verified":true}'
+```
+
+Use `GET /api/admin/rentals` to review inventory. `PATCH /api/admin/rentals/{id}` accepts `{"verified":true}` to refresh an owner check, or `{"available":false}` when rented. Admin routes require `X-Admin-Token`.
+
+Renter commands: `Hi`/`SEARCH` starts a search, `RESET` restarts preference capture, and `STOP` opts out. A fresh inbound message is required to restart after opt-out (`START`). The backend stores the phone number, current search preferences, and opt-out state to run the conversation.
+
+The pilot currently supports plain-text replies, one locality, a maximum monthly rent, and bedroom count. It uses locality substring matching. It does not yet support map radius searches, multiple areas, automatic listing ingestion, duplicate detection, scheduled alerts, language selection, or owner self-service listing intake. No WhatsApp credentials or real listing feed are included in this repository.
+
 ## Supported connectors
 
 | Connector | Source setup `kind` | Required `config_json` |
@@ -70,7 +100,7 @@ Create several carefully chosen role/location slices (for example, AI/ML, platfo
 ## API overview
 
 - `GET /api/health`
-- `GET /api/jobs?q=&location=&company=&employment_type=&remote=&posted_within_days=&limit=&offset=`
+- `GET /api/jobs?q=&location=&company=&employment_type=&remote=&posted_within_days=&fresh_within_days=30&limit=&offset=` — hides results not seen in a successful source run within 30 days by default; each result includes `last_seen_at`.
 - `GET /api/jobs/{id}`
 - `GET /api/jobs/{id}/sources` — active source provenance and original listing URLs
 - `GET /api/companies?q=&limit=&offset=`
@@ -96,12 +126,12 @@ Create several carefully chosen role/location slices (for example, AI/ML, platfo
 - `sources`: connector configuration and operational status.
 - `ingestion_runs`: durable history of success/failure and collection counts.
 
-Every source is created disabled unless an operator explicitly sets `terms_reviewed=true`; terms URL and approval timestamp are retained. A migration disables previously configured sources until they are reviewed. The initial dedupe key uses normalized title + company + location + employment type and is protected by a unique database index. This is useful for a 10,000-job MVP but can merge two genuine requisitions that share those fields. On an existing populated database, inspect and merge duplicate `dedupe_key` groups before running migration `0004_unique_job_dedupe` and `0005_primary_source`. Before a large commercial rollout, add provider requisition IDs, description similarity thresholds, and human review for ambiguous groups. A successful feed run marks missing source listings inactive; a failed or robots-blocked crawl does not deactivate data.
+Every source is created disabled unless an operator explicitly sets `terms_reviewed=true`; terms URL and approval timestamp are retained. The cross-source dedupe key now also includes posting day and normalized description, reducing accidental merges of similar requisitions. It remains heuristic: provider requisition IDs are the stable within-source identity, and ambiguous cross-source matches need review. A successful snapshot deactivates missing source listings only when it is not empty or unexpectedly smaller than the previous active inventory (default 50% threshold; configurable per source with `min_snapshot_ratio`). Incomplete snapshots retain earlier listings and are marked `incomplete`. Search and analytics hide jobs not seen in 30 days; use `fresh_within_days` to change the search window.
 
 ## Operational and security notes
 
 - Production uses PostgreSQL and schema migration (`alembic upgrade head` in the API container).
-- The worker is a separate service so scheduled polling does not depend on API request traffic. Keep one worker replica and avoid concurrent manual runs across replicas until a database advisory lock/queue is configured. The local lock prevents duplicate runs within one process.
+- The worker is a separate service so scheduled polling does not depend on API request traffic. Keep one worker replica and avoid concurrent manual runs across replicas until a database advisory lock/queue is configured. The local lock prevents duplicate runs within one process. SmartRecruiters pagination is capped at 100 pages; exceeding the cap fails the run so it cannot close inventory.
 - Admin endpoints fail closed when `ADMIN_API_TOKEN` is absent and use constant-time token comparison.
 - Source URL validation rejects obvious private-network SSRF targets; the generic crawler follows a bounded number of same-origin links and checks `robots.txt` before crawling. This is a practical safeguard, not a substitute for network-level egress controls or a security review.
 - Provider APIs are called on their public endpoints; confirm current provider terms, allowed use, rate limits, and branding requirements before commercial deployment.

@@ -175,10 +175,11 @@ async def fetch_source(source):
         elif source.kind == "smartrecruiters":
             company = cfg.get("company_identifier")
             if not company: raise ValueError("config_json.company_identifier is required")
-            offset = 0; limit = 100
-            while True:
+            offset = 0; limit = 100; pages = 0; max_pages = 100
+            while pages < max_pages:
                 response = await client.get(f"https://api.smartrecruiters.com/v1/companies/{company}/postings", params={"limit": limit, "offset": offset})
                 response.raise_for_status(); payload = response.json(); rows = payload.get("content", [])
+                pages += 1
                 for x in rows:
                     loc = x.get("location") or {}; location = ", ".join(filter(None, [loc.get("city"), loc.get("region"), loc.get("country")]))
                     job_id = str(x.get("id") or x.get("ref") or "")
@@ -189,6 +190,8 @@ async def fetch_source(source):
                 total = payload.get("totalFound", len(rows))
                 offset += len(rows)
                 if not rows or offset >= total: break
+            else:
+                raise ValueError(f"SmartRecruiters result exceeded the {max_pages}-page safety limit; snapshot was not complete")
         elif source.kind in {"jsonld", "career_page"}:
             start_url = cfg.get("url") or source.base_url
             assert_public_http_url(start_url)

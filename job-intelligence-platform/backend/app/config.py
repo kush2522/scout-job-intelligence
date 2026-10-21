@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     user_agent: str = "ScoutJobIntel/0.2 (contact: ops@example.com)"
     adzuna_app_id: str = ""
     adzuna_app_key: str = ""
+    whatsapp_access_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_verify_token: str = ""
+    whatsapp_app_secret: str = ""
+    whatsapp_graph_version: str = "v23.0"
     request_timeout_seconds: int = 20
     max_career_pages: int = 12
     min_source_interval_seconds: float = 2.0
