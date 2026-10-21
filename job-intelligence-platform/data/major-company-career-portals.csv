@@ -1,0 +1,13 @@
+name,website_url,careers_url,industry,country_code,terms_reviewed,terms_review_url,source_type,connector,city_focus
+Amazon,https://www.amazon.jobs,https://amazon.jobs/content/en-gb/locations/india/bangalore,Technology,IN,false,,Official careers portal,career_page,Bengaluru
+Microsoft,https://www.microsoft.com,https://careers.microsoft.com/v2/global/en/locations/bengaluru.html,Technology,IN,false,,Official careers portal,career_page,Bengaluru
+Google,https://about.google,https://www.google.com/about/careers/applications/jobs/results/?location=Bangalore%2C+India,Technology,IN,false,,Official careers portal,career_page,Bengaluru
+Flipkart,https://www.flipkart.com,https://www.flipkartcareers.com/jobslist,Technology,IN,false,,Official careers portal,career_page,Bengaluru
+Acceldata,https://www.acceldata.io,https://jobs.lever.co/acceldata,Technology,IN,false,,ATS board,lever,Bengaluru
+Level AI,https://thelevel.ai,https://jobs.lever.co/levelai,Technology,IN,false,,ATS board,lever,Bengaluru
+Endpoint Clinical,https://www.endpointclinical.com,https://jobs.lever.co/endpointclinical,Healthcare Technology,IN,false,,ATS board,lever,Bengaluru
+Brillio,https://www.brillio.com,https://jobs.lever.co/brillio-2,Technology Services,IN,false,,ATS board,lever,Bengaluru
+Sarvam,https://www.sarvam.ai,https://jobs.ashbyhq.com/sarvam,Artificial Intelligence,IN,false,,ATS board,ashby,Bengaluru
+Safe Security,https://safe.security,https://jobs.lever.co/safe,Cybersecurity,IN,false,,ATS board,lever,Bengaluru
+Universal Electronics,https://www.uei.com,https://jobs.lever.co/uei,Electronics,IN,false,,ATS board,lever,Bengaluru
+Aeva,https://www.aeva.com,https://jobs.lever.co/aeva,Automotive Technology,IN,false,,ATS board,lever,Bengaluru
