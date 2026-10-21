@@ -2,9 +2,6 @@
 import {useEffect,useState} from "react";
 type Job={id:number;title:string;company_name:string;location:string|null;employment_type:string|null;description:string|null;apply_url:string;remote:boolean;posted_at:string|null;last_seen_at?:string|null;source_count?:number;salary_min?:number|null;salary_max?:number|null;salary_currency?:string|null;skills?:string[]};
 const API=process.env.NEXT_PUBLIC_API_URL||"http://localhost:8000";
-{id:-1,title:"Director, AI Platform Engineering",company_name:"Example Technology",location:"Bengaluru, India",employment_type:"Full-time",description:"Lead platform strategy, AI infrastructure and cross-functional engineering teams.",apply_url:"#",remote:false,posted_at:null},
-{id:-2,title:"Head of Platform Engineering",company_name:"Example Cloud",location:"Remote — India",employment_type:"Full-time",description:"Own developer platform, reliability, cloud operations and engineering productivity.",apply_url:"#",remote:true,posted_at:null},
-{id:-3,title:"Director, Generative AI Engineering",company_name:"Example AI",location:"Gurugram, India",employment_type:"Full-time",description:"Build enterprise AI products, agentic systems and production engineering practices.",apply_url:"#",remote:false,posted_at:null}];
 export default function Home(){
 const[q,setQ]=useState("");const[loc,setLoc]=useState("");const[co,setCo]=useState("");const[remote,setRemote]=useState(false);const[jobs,setJobs]=useState<Job[]>([]);const[error,setError]=useState("");const[saved,setSaved]=useState<number[]>([]);
 useEffect(()=>{try{setSaved(JSON.parse(localStorage.getItem("scout-saved")||"[]"))}catch{}},[]);
