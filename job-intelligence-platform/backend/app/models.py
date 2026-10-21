@@ -125,3 +125,43 @@ class WhatsAppUser(Base):
     preferences_json: Mapped[dict] = mapped_column(JSON, default=dict)
     last_inbound_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     opted_out: Mapped[bool] = mapped_column(Boolean, default=False)
+
+class PortalUser(Base):
+    __tablename__ = "portal_users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    saved_searches = relationship("SavedSearch", back_populates="user", cascade="all, delete-orphan")
+
+class SavedSearch(Base):
+    __tablename__ = "saved_searches"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("portal_users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    query: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    company: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    remote: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    employment_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    posted_within_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    frequency: Mapped[str] = mapped_column(String(12), default="daily")
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    next_send_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    user = relationship("PortalUser", back_populates="saved_searches")
+
+class AlertedJob(Base):
+    __tablename__ = "alerted_jobs"
+    __table_args__ = (UniqueConstraint("saved_search_id", "job_id", name="uq_alerted_search_job"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    saved_search_id: Mapped[int] = mapped_column(ForeignKey("saved_searches.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+class SearchEvent(Base):
+    __tablename__ = "search_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    query_text: Mapped[str] = mapped_column(String(150), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)

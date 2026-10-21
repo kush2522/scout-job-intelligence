@@ -1,19 +1,21 @@
 from contextlib import asynccontextmanager
-import csv, io
+import csv, io, re
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, or_, func, desc
+from sqlalchemy import select, or_, and_, func, desc
 from sqlalchemy.orm import Session
 from .config import settings
 from .db import Base, engine, get_db
-from .models import Job, JobListing, Source, Company, IngestionRun, RentalListing
+from .models import Job, JobListing, Source, Company, IngestionRun, RentalListing, SearchEvent
 from .schemas import SourceCreate, SourceOut, JobOut, CompanyOut, SourceRunOut, RentalListingCreate, RentalListingOut
 from .ingest import ingest_source, ingest_all
 from .connectors import assert_public_http_url
 from .security import require_admin
 from .discovery import discover_careers, connector_for_url
 from .whatsapp import router as whatsapp_router
+from .portal import router as portal_router
+from pydantic import BaseModel, Field
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,6 +28,21 @@ app = FastAPI(title="Scout Job Intelligence API", version="0.2.0", lifespan=life
 app.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in settings.cors_origins.split(",") if x.strip()],
                    allow_credentials=False, allow_methods=["GET", "POST", "PATCH", "OPTIONS"], allow_headers=["Content-Type", "X-Admin-Token"])
 app.include_router(whatsapp_router)
+app.include_router(portal_router)
+
+class SearchAnalyticsIn(BaseModel):
+    query: str = Field(min_length=2, max_length=150)
+
+@app.post("/api/analytics/search", status_code=202)
+def record_search(payload: SearchAnalyticsIn, db: Session = Depends(get_db)):
+    # Keep only aggregate search phrases; discard email addresses and phone-like values.
+    query = re.sub(r"\b[^\s@]+@[^\s@]+\.[^\s@]+\b", "", payload.query)
+    query = re.sub(r"(?<!\w)\+?[\d][\d\s().-]{7,}\d(?!\w)", "", query)
+    query = " ".join(query.split())[:150]
+    if len(query) >= 2:
+        db.add(SearchEvent(query_text=query.casefold()))
+        db.commit()
+    return {"recorded": len(query) >= 2}
 
 def _is_recently_seen(job: Job, days: int = 30) -> bool:
     last_seen = job.last_seen_at
@@ -88,7 +105,9 @@ def jobs(q: str | None = None, location: str | None = None, company: str | None 
     if company: stmt = stmt.where(Job.company_name.ilike(f"%{company[:150]}%"))
     if employment_type: stmt = stmt.where(Job.employment_type.ilike(f"%{employment_type[:100]}%"))
     if remote is not None: stmt = stmt.where(Job.remote.is_(remote))
-    if posted_within_days: stmt = stmt.where(Job.first_seen_at >= datetime.now(timezone.utc) - timedelta(days=posted_within_days))
+    if posted_within_days:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=posted_within_days)
+        stmt = stmt.where(or_(and_(Job.posted_at.is_not(None), Job.posted_at >= cutoff), and_(Job.posted_at.is_(None), Job.first_seen_at >= cutoff)))
     rows = db.execute(stmt.order_by(desc(Job.first_seen_at), Job.id).offset(offset).limit(limit)).all()
     result = []
     for job, source_count in rows:
@@ -171,6 +190,22 @@ def top_skills(limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_d
     counts = Counter(skill for skills in rows for skill in (skills or []))
     return [{"skill": skill, "active_jobs": count} for skill, count in counts.most_common(limit)]
 
+@app.get("/api/analytics/search-terms")
+def top_search_terms(days: int = Query(30, ge=1, le=365), limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = db.execute(select(SearchEvent.query_text, func.count(SearchEvent.id).label("searches"))
+        .where(SearchEvent.created_at >= since).group_by(SearchEvent.query_text)
+        .order_by(desc("searches")).limit(limit)).all()
+    return [{"query": query, "searches": count} for query, count in rows]
+
+@app.get("/api/analytics/trends")
+def hiring_trends(days: int = Query(30, ge=7, le=180), db: Session = Depends(get_db)):
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = db.execute(select(func.date(Job.first_seen_at).label("day"), func.count(Job.id).label("new_jobs"),
+                             func.count(func.distinct(Job.company_id)).label("hiring_companies"))
+        .where(Job.active.is_(True), Job.first_seen_at >= since).group_by(func.date(Job.first_seen_at)).order_by(func.date(Job.first_seen_at))).all()
+    return [{"date": str(day), "new_jobs": new_jobs, "hiring_companies": companies} for day, new_jobs, companies in rows]
+
 @app.post("/api/admin/companies/import-csv", dependencies=[Depends(require_admin)])
 async def import_companies_csv(request: Request, db: Session = Depends(get_db)):
     """Import companies from raw CSV (text/csv). Expected columns: name, website_url, careers_url, industry, country_code."""
@@ -201,7 +236,11 @@ async def import_companies_csv(request: Request, db: Session = Depends(get_db)):
             else:
                 if website and not company.website_url: company.website_url=website
                 if careers and not company.careers_url: company.careers_url=careers
-            if careers:
+            # Company catalogs can carry official career links that are intended only
+            # for candidates to browse. Do not create a crawler source for them unless
+            # the CSV explicitly asks for a supported/approved connector candidate.
+            browse_only=(row.get("connector") or "").strip().lower() == "browse_only"
+            if careers and not browse_only:
                 guess=connector_for_url(careers,name)
                 exists=db.scalar(select(Source).where(Source.base_url==careers,Source.kind==guess["kind"]))
                 if not exists:

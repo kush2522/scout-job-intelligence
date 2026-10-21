@@ -1,0 +1,50 @@
+name,website_url,careers_url,industry,country_code,terms_reviewed,terms_review_url,source_type,connector,markets
+Amazon,https://www.amazon.com,https://www.amazon.jobs/en/search?base_query=all&country=IND&loc_query=India,Technology,IN,false,,Official career portal,browse_only,India;Gulf
+Microsoft,https://www.microsoft.com,https://careers.microsoft.com/v2/global/en/locations/india.html,Technology,IN,false,,Official career portal,browse_only,India;Gulf
+Google,https://about.google,https://www.google.com/about/careers/applications/jobs/results/?location=India,Technology,IN,false,,Official career portal,browse_only,India;Gulf
+Flipkart,https://www.flipkart.com,https://www.flipkartcareers.com/jobslist,Technology,IN,false,,Official career portal,browse_only,India
+Tata Consultancy Services,https://www.tcs.com,https://www.tcs.com/careers/india,IT Services,IN,false,,Official career portal,browse_only,India;Gulf
+Infosys,https://www.infosys.com,https://career.infosys.com/?hl=en-IN,IT Services,IN,false,,Official career portal,browse_only,India;Gulf
+Wipro,https://www.wipro.com,https://careers.wipro.com/viewalljobs/,IT Services,IN,false,,Official career portal,browse_only,India;Gulf
+HCLTech,https://www.hcltech.com,https://careers.hcltech.com/,IT Services,IN,false,,Official career portal,browse_only,India;Gulf
+Tech Mahindra,https://www.techmahindra.com,https://careers.techmahindra.com/,IT Services,IN,false,,Official career portal,browse_only,India;Gulf
+Cognizant,https://www.cognizant.com,https://careers.cognizant.com/global-en/jobs,IT Services,IN,false,,Official career portal,browse_only,India;Gulf
+Accenture,https://www.accenture.com,https://www.accenture.com/in-en/careers,IT Services,IN,false,,Official career portal,browse_only,India;Gulf
+IBM,https://www.ibm.com,https://www.ibm.com/careers/in-en/,Technology,IN,false,,Official career portal,browse_only,India;Gulf
+Oracle,https://www.oracle.com,https://careers.oracle.com/,Technology,IN,false,,Official career portal,browse_only,India;Gulf
+SAP,https://www.sap.com,https://jobs.sap.com/,Technology,IN,false,,Official career portal,browse_only,India;Gulf
+Cisco,https://www.cisco.com,https://careers.cisco.com/global/en,Technology,IN,false,,Official career portal,browse_only,India;Gulf
+Adobe,https://www.adobe.com,https://careers.adobe.com/us/en,Technology,IN,false,,Official career portal,browse_only,India;Gulf
+NVIDIA,https://www.nvidia.com,https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite,Technology,IN,false,,Official career portal,browse_only,India;Gulf
+Salesforce,https://www.salesforce.com,https://careers.salesforce.com/en/jobs/,Technology,IN,false,,Official career portal,browse_only,India;Gulf
+Uber,https://www.uber.com,https://www.uber.com/us/en/careers/list/,Technology,IN,false,,Official career portal,browse_only,India;Gulf
+Tata Group,https://www.tata.com,https://www.tata.com/careers/jobs,Multi-industry,IN,false,,Official career portal,browse_only,India;Gulf
+Mahindra Group,https://www.mahindra.com,https://www.mahindra.com/career,Multi-industry,IN,false,,Official career portal,browse_only,India;Gulf
+Reliance Industries,https://www.ril.com,https://www.ril.com/careers,Multi-industry,IN,false,,Official career portal,browse_only,India;Gulf
+Acceldata,https://www.acceldata.io,https://jobs.lever.co/acceldata,Technology,IN,false,,ATS board,lever,India
+Level AI,https://thelevel.ai,https://jobs.lever.co/levelai,Technology,IN,false,,ATS board,lever,India
+Endpoint Clinical,https://www.endpointclinical.com,https://jobs.lever.co/endpointclinical,Healthcare Technology,IN,false,,ATS board,lever,India
+Brillio,https://www.brillio.com,https://jobs.lever.co/brillio-2,Technology Services,IN,false,,ATS board,lever,India
+Sarvam,https://www.sarvam.ai,https://jobs.ashbyhq.com/sarvam,Artificial Intelligence,IN,false,,ATS board,ashby,India
+Safe Security,https://safe.security,https://jobs.lever.co/safe,Cybersecurity,IN,false,,ATS board,lever,India
+Universal Electronics,https://www.uei.com,https://jobs.lever.co/uei,Electronics,IN,false,,ATS board,lever,India
+Aeva,https://www.aeva.com,https://jobs.lever.co/aeva,Automotive Technology,IN,false,,ATS board,lever,India
+Emirates Group,https://www.emiratesgroup.com,https://www.emiratesgroupcareers.com/search-and-apply/,Aviation,AE,false,,Official career portal,browse_only,UAE;India;Gulf
+Etihad Airways,https://www.etihad.com,https://careers.etihad.com/,Aviation,AE,false,,Official career portal,browse_only,UAE;India;Gulf
+ADNOC,https://www.adnoc.ae,https://jobs.adnoc.ae/us/en,Energy,AE,false,,Official career portal,browse_only,UAE;Gulf
+G42,https://www.g42.ai,https://careers.g42.ai/global/en/search-results,Technology,AE,false,,Official career portal,browse_only,UAE;Gulf
+DP World,https://www.dpworld.com,https://dpw-global-careers-frontend.dpworld.com/en/careers/vacancies,Logistics,AE,false,,Official career portal,browse_only,UAE;India;Gulf
+e&,https://www.eand.com,https://www.etisalat.ae/content/careers/language-master/en/career-areas.html,Telecommunications,AE,false,,Official career portal,browse_only,UAE;Gulf
+Al-Futtaim,https://www.alfuttaim.com,https://www.afuturewithus.com/,Retail and Services,AE,false,,Official career portal,browse_only,UAE;Gulf
+Majid Al Futtaim,https://www.majidalfuttaim.com,https://careers.majidalfuttaim.com/global/en/home,Retail and Real Estate,AE,false,,Official career portal,browse_only,UAE;Gulf
+Emirates NBD,https://www.emiratesnbd.com,https://www.emiratesnbd.com/en/careers,Banking,AE,false,,Official career portal,browse_only,UAE;Gulf
+Saudi Aramco,https://www.aramco.com,https://careers.aramco.com/,Energy,SA,false,,Official career portal,browse_only,Saudi Arabia;Gulf
+NEOM,https://www.neom.com,https://careers.neom.com/,Real Estate and Technology,SA,false,,Official career portal,browse_only,Saudi Arabia;Gulf
+SABIC,https://www.sabic.com,https://jobs.sabic.com/,Chemicals,SA,false,,Official career portal,browse_only,Saudi Arabia;Gulf
+stc Group,https://www.stc.com.sa,https://careers.stc.com.sa/,Telecommunications,SA,false,,Official career portal,browse_only,Saudi Arabia;Gulf
+Qatar Airways,https://www.qatarairways.com,https://careers.qatarairways.com/global/en,Airline,QA,false,,Official career portal,browse_only,Qatar;Gulf
+QatarEnergy,https://www.qatarenergy.qa,https://careerportal.qatarenergy.qa/jobs,Energy,QA,false,,Official career portal,browse_only,Qatar;Gulf
+Ooredoo,https://www.ooredoo.com,https://careers.ooredoo.com/,Telecommunications,QA,false,,Official career portal,browse_only,Qatar;Kuwait;Gulf
+Gulf Air,https://www.gulfair.com,https://www.gulfair.com/en/careers,Aviation,BH,false,,Official career portal,browse_only,Bahrain;Gulf
+Kuwait Petroleum Corporation,https://www.kpc.com.kw,https://www.kpc.com.kw/KPCCareers,Energy,KW,false,,Official career portal,browse_only,Kuwait;Gulf
+Oman Air,https://www.omanair.com,https://services.omanair.com/om/en/careers,Aviation,OM,false,,Official career portal,browse_only,Oman;Gulf

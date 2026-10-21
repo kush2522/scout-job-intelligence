@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     whatsapp_verify_token: str = ""
     whatsapp_app_secret: str = ""
     whatsapp_graph_version: str = "v23.0"
+    portal_identity_secret: str = ""
+    resend_api_key: str = ""
+    alert_email_from: str = "Scout Jobs <jobs@example.com>"
+    portal_base_url: str = "http://localhost:3000"
     request_timeout_seconds: int = 20
     max_career_pages: int = 12
     min_source_interval_seconds: float = 2.0

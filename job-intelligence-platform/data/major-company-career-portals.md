@@ -1,33 +1,11 @@
-# Bengaluru company career portals
+# India and Gulf company career portals
 
-This is a locally researched starter list, checked on 2026-10-21. Career pages and openings change; verify the employer page before applying.
+Researched starter catalog checked on 2026-10-21. It covers 49 selected large employers and recognizable India-market technology companies with official career pages across India and the Gulf Cooperation Council (UAE, Saudi Arabia, Qatar, Bahrain, Kuwait, and Oman). “India and Gulf” is too broad for a literally exhaustive company list; this is a maintained seed directory, not a complete register of every employer. Career pages and vacancies change, so confirm each link on the employer's official site before applying.
 
-## Official employer career portals
+The importable records are in `major-company-career-portals.csv`; the matching catalog copy used by the admin import button is `web/public/company-market-catalog.csv`. India entries include Amazon, Microsoft, Google, Flipkart, TCS, Infosys, Wipro, HCLTech, Tech Mahindra, Cognizant, Accenture, IBM, Oracle, SAP, Cisco, Adobe, NVIDIA, Salesforce, Uber, Tata Group, Mahindra Group, Reliance Industries, and the existing ATS-board companies. Gulf entries include Emirates Group, Etihad, ADNOC, G42, DP World, e&, Al-Futtaim, Majid Al Futtaim, Emirates NBD, Saudi Aramco, NEOM, SABIC, stc, Qatar Airways, QatarEnergy, Ooredoo, Gulf Air, Kuwait Petroleum Corporation, and Oman Air.
 
-| Company | Bengaluru portal | App support today |
-| --- | --- | --- |
-| Amazon | [Bangalore jobs](https://amazon.jobs/content/en-gb/locations/india/bangalore) | Portal link only; its dynamic page may need a dedicated connector |
-| Microsoft | [Bengaluru jobs](https://careers.microsoft.com/v2/global/en/locations/bengaluru.html) | Portal link only; its dynamic page may need a dedicated connector |
-| Google | [Bengaluru jobs search](https://www.google.com/about/careers/applications/jobs/results/?location=Bangalore%2C+India) | Portal link only; its dynamic page may need a dedicated connector |
-| Flipkart | [Current openings](https://www.flipkartcareers.com/jobslist) | Portal link only; its dynamic page may need a dedicated connector |
+Examples checked against current official pages include [TCS India careers](https://www.tcs.com/careers/india), [Infosys careers](https://career.infosys.com/?hl=en-IN), [HCLTech careers](https://careers.hcltech.com/), [Wipro jobs](https://careers.wipro.com/viewalljobs/), [Cognizant jobs](https://careers.cognizant.com/global-en/jobs), [Tech Mahindra careers](https://careers.techmahindra.com/), and global career pages for [Microsoft India](https://careers.microsoft.com/v2/global/en/locations/india.html) and [Amazon India](https://www.amazon.jobs/en/search?base_query=all&country=IND&loc_query=India). Gulf portal examples include [Emirates Group](https://www.emiratesgroupcareers.com/search-and-apply/?brand=dnata%3BEmirates+Group&location=United+Arab+Emirates), [Etihad](https://careers.etihad.com/), [ADNOC](https://jobs.adnoc.ae/us/en), [Aramco](https://careers.aramco.com/), [NEOM](https://careers.neom.com/), [G42](https://careers.g42.ai/global/en/search-results), [DP World](https://dpw-global-careers-frontend.dpworld.com/en/careers/vacancies), [Ooredoo](https://careers.ooredoo.com/), [QatarEnergy](https://careerportal.qatarenergy.qa/jobs), [Gulf Air](https://www.gulfair.com/en/careers), [Kuwait Petroleum Corporation](https://www.kpc.com.kw/KPCCareers), and [Oman Air](https://services.omanair.com/om/en/careers).
 
-## Existing API connector boards
+## Import and collection limits
 
-These portals match connectors already present in the app. The seed CSV includes the exact board URL; current postings should still be checked on the employer portal.
-
-| Company | Board | Connector |
-| --- | --- | --- |
-| Acceldata | [Lever board](https://jobs.lever.co/acceldata) | Lever |
-| Level AI | [Lever board](https://jobs.lever.co/levelai) | Lever |
-| Endpoint Clinical | [Lever board](https://jobs.lever.co/endpointclinical) | Lever |
-| Brillio | [Lever board](https://jobs.lever.co/brillio-2) | Lever |
-| Sarvam | [Ashby board](https://jobs.ashbyhq.com/sarvam) | Ashby |
-| Safe Security | [Lever board](https://jobs.lever.co/safe) | Lever |
-| Universal Electronics | [Lever board](https://jobs.lever.co/uei) | Lever |
-| Aeva | [Lever board](https://jobs.lever.co/aeva) | Lever |
-
-## Local setup and collection
-
-Import `major-company-career-portals.csv` using the admin company CSV import endpoint. The rows deliberately have `terms_reviewed=false`, so imported sources remain disabled. The four large-company portals are useful directory links, but the current generic crawler only collects supported structured job data; do not expect extraction from dynamic portals without a dedicated connector. Lever and Ashby rows use existing API connectors.
-
-Before enabling any source, review that employer/ATS portal's applicable terms and robots policy and record the reviewed policy URL. The importer does not crawl during CSV import. After a source is reviewed and enabled in Admin, ingestion can be run locally through the admin source controls or API. Prefer direct employer application links when showing jobs to users.
+In `/admin`, use **Import India + Gulf company directory** to populate the company directory. This import does not collect postings. Every row has `terms_reviewed=false`; `browse_only` portals are stored as company links without creating crawler sources. The existing Lever/Ashby rows create disabled source candidates and can be collected through their API connectors after policy review. Most major-company portals use dynamic career systems not supported by the generic JSON-LD crawler; their URL is stored for users to visit, and a dedicated connector must be implemented before we can reliably ingest their full posting inventory. The employer portal must remain the authoritative apply destination.
